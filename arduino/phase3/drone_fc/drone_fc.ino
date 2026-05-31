@@ -5,6 +5,7 @@
 
 #include <Wire.h>
 #include <SPI.h>
+#include <Adafruit_BMP280.h>
 #include <LoRa.h>
 
 // ================================================================
@@ -34,7 +35,7 @@
 // ================================================================
 #define MPU_ADDR 0x68  // MPU-6050
 #define BMP_ADDR 0x77  // BMP280
-#define HMC_ADDR 0x1E  // HMC5883L（コンパス）
+#define ATD_ADDR 0x0D  // ATD5883L（QMC5883L互換品）
 
 // ================================================================
 // 状態機械の定義
@@ -63,10 +64,12 @@ float prev_error_roll = 0, prev_error_pitch = 0, prev_error_yaw = 0, prev_error_
 // ================================================================
 // センサー値
 // ================================================================
+Adafruit_BMP280 bmp;
 float ax, ay, az;        // 加速度 [g]
 float gx, gy, gz;        // ジャイロ [deg/s]
 float roll, pitch, yaw;  // 姿勢角 [deg]
 float altitude;          // 高度 [m]
+float temperature;  // 気温 [℃]
 float heading;           // コンパス方位 [deg]
 
 // ================================================================
@@ -99,7 +102,7 @@ void setup() {
     // センサー初期化
     initMPU6050();
     initBMP280();
-    initHMC5883L();
+    initATD5883L();
 
     // ESC初期化（PWM設定）
     ledcAttach(ESC_M1, 50, 16);
@@ -142,7 +145,7 @@ void loop() {
     // 1. センサー読み取り
     readMPU6050();
     readBMP280();
-    readHMC5883L();
+    readATD5883L();
 
     // 2. 姿勢推定
     roll  = atan2(ay, az) * 180.0 / PI;
@@ -201,9 +204,8 @@ void loop() {
         now, roll, pitch, yaw, altitude, (int)state);
     LoRa.endPacket();
 
-
-    Serial.printf("roll=%.1f pitch=%.1f heading=%.1f alt=%.1f state=%d\n",
-    roll, pitch, heading, altitude, (int)state);
+    Serial.printf("roll=%.1f pitch=%.1f heading=%.1f alt=%.1f temp=%.1f state=%d\n",
+    roll, pitch, heading, altitude, temperature, (int)state);
 }
 
 // ================================================================
@@ -314,7 +316,7 @@ void readMPU6050() {
 // BMP280 初期化・読み取り（簡易版）
 // ================================================================
 void initBMP280() {
-    Wire.beginTransmission(BMP_ADDR);
+    bmp.begin(BMP_ADDR);
     Wire.write(0xF4); Wire.write(0x27);  // 通常モード
     Wire.endTransmission();
 }
@@ -327,23 +329,24 @@ void readBMP280() {
     Wire.requestFrom((uint8_t)BMP_ADDR, (uint8_t)6);
     int32_t raw = (Wire.read() << 12) | (Wire.read() << 4) | (Wire.read() >> 4);
     float pressure = raw / 100.0;  // 仮換算（要キャリブ）
-    altitude = 44330.0 * (1.0 - pow(pressure / 1013.25, 0.1903));
+    altitude = bmp.readAltitude(1013.25);
+    temperature = bmp.readTemperature();
 }
 
 // ================================================================
-// HMC5883L（コンパス）初期化・読み取り
+// ATD5883L（QMC5883L互換品）初期化・読み取り
 // ================================================================
-void initHMC5883L() {
-    Wire.beginTransmission(HMC_ADDR);
-    Wire.write(0x02); Wire.write(0x00);  // 連続計測モード
+void initATD5883L() {
+    Wire.beginTransmission(ATD_ADDR);
+    Wire.write(0x09); Wire.write(0x1D);  // 連続計測モード
     Wire.endTransmission();
 }
 
-void readHMC5883L() {
-    Wire.beginTransmission(HMC_ADDR);
-    Wire.write(0x03);  // データレジスタ
+void readATD5883L() {
+    Wire.beginTransmission(ATD_ADDR);
+    Wire.write(0x00);  // データレジスタ
     Wire.endTransmission(false);
-    Wire.requestFrom((uint8_t)HMC_ADDR, (uint8_t)6);
+    Wire.requestFrom((uint8_t)ATD_ADDR, (uint8_t)6);
     int16_t mx = (Wire.read() << 8) | Wire.read();
     Wire.read(); Wire.read();  // Z軸スキップ
     int16_t my = (Wire.read() << 8) | Wire.read();
