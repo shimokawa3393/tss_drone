@@ -18,10 +18,10 @@
 #define LORA_DIO 13
 
 // ESC出力ピン（PWM）
-#define ESC_M1 25 // 左前
-#define ESC_M2 12 // 右前
-#define ESC_M3 27 // 左後
-#define ESC_M4 4 // 右後
+#define ESC_M1 26 // 左前
+#define ESC_M2 5  // 右前
+#define ESC_M3 12 // 左後
+#define ESC_M4 4  // 右後
 
 // RC受信機入力ピン
 #define RC_THROTTLE 34
@@ -117,8 +117,12 @@ void setup() {
 
     // LoRa初期化
     LoRa.setPins(LORA_CS, LORA_RST, LORA_DIO);
-    LoRa.begin(433E6);
-    LoRa.setSpreadingFactor(9);
+    if (!LoRa.begin(433E6)) {
+        Serial.println("LoRa初期化失敗");
+    } else {
+        Serial.println("LoRa初期化成功");
+        LoRa.setSpreadingFactor(9);
+    }
 
 
     for (byte addr = 1; addr < 127; addr++) {
@@ -317,21 +321,21 @@ void readMPU6050() {
 // ================================================================
 void initBMP280() {
     bmp.begin(BMP_ADDR);
-    Wire.write(0xF4); Wire.write(0x27);  // 通常モード
+    Wire.write(0xF4); Wire.write(0x27);
     Wire.endTransmission();
 }
 
 void readBMP280() {
-    // ※簡易実装。実際はキャリブレーション補正が必要
     Wire.beginTransmission(BMP_ADDR);
     Wire.write(0xF7);
     Wire.endTransmission(false);
     Wire.requestFrom((uint8_t)BMP_ADDR, (uint8_t)6);
     int32_t raw = (Wire.read() << 12) | (Wire.read() << 4) | (Wire.read() >> 4);
-    float pressure = raw / 100.0;  // 仮換算（要キャリブ）
+    float pressure = raw / 100.0;
     altitude = bmp.readAltitude(1013.25);
     temperature = bmp.readTemperature();
 }
+
 
 // ================================================================
 // ATD5883L（QMC5883L互換品）初期化・読み取り
